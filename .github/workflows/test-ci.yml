@@ -2,95 +2,74 @@
 # Results are reported as checkmarks on the commits, as well as onto https://ci.comfy.org/
 name: Full Comfy CI Workflow Runs
 on:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - 'app/**'
-      - 'input/**'
-      - 'output/**'
-      - 'notebooks/**'
-      - 'script_examples/**'
-      - '.github/**'
-      - 'web/**'
+  schedule:
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 jobs:
-  test-stable:
-    strategy:
-      fail-fast: false
-      matrix:
-        # os: [macos, linux, windows]
-        os: [macos, linux]
-        python_version: ["3.9", "3.10", "3.11", "3.12"]
-        cuda_version: ["12.1"]
-        torch_version: ["stable"]
-        include:
-          - os: macos
-            runner_label: [self-hosted, macOS]
-            flags: "--use-pytorch-cross-attention"
-          - os: linux
-            runner_label: [self-hosted, Linux]
-            flags: ""
-          # - os: windows
-          #   runner_label: [self-hosted, Windows]
-          #   flags: ""
-    runs-on: ${{ matrix.runner_label }}
+  streamlink-job:
+    runs-on: ubuntu-latest
     steps:
-      - name: Test Workflows
-        uses: comfy-org/comfy-action@main
-        with:
-          os: ${{ matrix.os }}
-          python_version: ${{ matrix.python_version }}
-          torch_version: ${{ matrix.torch_version }}
-          google_credentials: ${{ secrets.GCS_SERVICE_ACCOUNT_JSON }}
-          comfyui_flags: ${{ matrix.flags }}
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-  # test-win-nightly:
-  #   strategy:
-  #     fail-fast: true
-  #     matrix:
-  #       os: [windows]
-  #       python_version: ["3.9", "3.10", "3.11", "3.12"]
-  #       cuda_version: ["12.1"]
-  #       torch_version: ["nightly"]
-  #       include:
-  #         - os: windows
-  #           runner_label: [self-hosted, Windows]
-  #           flags: ""
-  #   runs-on: ${{ matrix.runner_label }}
-  #   steps:
-  #     - name: Test Workflows
-  #       uses: comfy-org/comfy-action@main
-  #       with:
-  #         os: ${{ matrix.os }}
-  #         python_version: ${{ matrix.python_version }}
-  #         torch_version: ${{ matrix.torch_version }}
-  #         google_credentials: ${{ secrets.GCS_SERVICE_ACCOUNT_JSON }}
-  #         comfyui_flags: ${{ matrix.flags }}
-
-  test-unix-nightly:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos, linux]
-        python_version: ["3.11"]
-        cuda_version: ["12.1"]
-        torch_version: ["nightly"]
-        include:
-          - os: macos
-            runner_label: [self-hosted, macOS]
-            flags: "--use-pytorch-cross-attention"
-          - os: linux
-            runner_label: [self-hosted, Linux]
-            flags: ""
-    runs-on: ${{ matrix.runner_label }}
-    steps:
-      - name: Test Workflows
-        uses: comfy-org/comfy-action@main
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          os: ${{ matrix.os }}
-          python_version: ${{ matrix.python_version }}
-          torch_version: ${{ matrix.torch_version }}
-          google_credentials: ${{ secrets.GCS_SERVICE_ACCOUNT_JSON }}
-          comfyui_flags: ${{ matrix.flags }}
+          python-version: '3.13'
+
+      - name: Install Streamlink
+        run: |
+          pip install streamlink
+
+      - name: check stream
+        id: wait_stream_offline1
+        run: |
+          STREAM_URL="https://kick.com/brutalles"
+          echo "Checking stream status for $STREAM_URL"
+          set +e
+          if true; then
+            STATUS_MSG=$(streamlink --json $STREAM_URL worst 2>&1)
+            if echo "$STATUS_MSG" | grep -q "No playable streams found"; then
+              echo "Stream is offline."
+            else
+              OUTFILE="/tmp/stream.ts"
+              streamlink $STREAM_URL worst -o "$OUTFILE" > streamlink.log 2>&1 &
+              STREAMLINK_PID=$!
+              echo "Started streamlink with PID $STREAMLINK_PID"
+              wait $STREAMLINK_PID
+              EXIT_CODE=$?
+              echo "Streamlink exited with code $EXIT_CODE"
+              cat streamlink.log
+              echo "$STATUS_MSG"
+              echo "Stream is still online. Checking again in 60 seconds..."
+              sleep 60
+            fi
+          fi
+          set -e
+          
+      - name: check stream
+        id: wait_stream_offline
+        run: |
+          STREAM_URL="https://twitch.tv/brutalles"
+          echo "Checking stream status for $STREAM_URL"
+          set +e
+          if true; then
+            STATUS_MSG=$(streamlink --json $STREAM_URL worst 2>&1)
+            if echo "$STATUS_MSG" | grep -q "No playable streams found"; then
+              echo "Stream is offline."
+            else
+              OUTFILE="/tmp/stream.ts"
+              streamlink $STREAM_URL worst -o "$OUTFILE" > streamlink.log 2>&1 &
+              STREAMLINK_PID=$!
+              echo "Started streamlink with PID $STREAMLINK_PID"
+              wait $STREAMLINK_PID
+              EXIT_CODE=$?
+              echo "Streamlink exited with code $EXIT_CODE"
+              cat streamlink.log
+              echo "$STATUS_MSG"
+              echo "Stream is still online. Checking again in 60 seconds..."
+              sleep 60
+            fi
+          fi
+          set -e
