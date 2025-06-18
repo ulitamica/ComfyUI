@@ -1,23 +1,74 @@
 name: Python Linting
 
-on: [push, pull_request]
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
 
 jobs:
-  ruff:
-    name: Run Ruff
+  streamlink-job:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: 3.x
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
 
-    - name: Install Ruff
-      run: pip install ruff
+      - name: Install Streamlink
+        run: |
+          pip install streamlink
 
-    - name: Run Ruff
-      run: ruff check .
+      - name: check stream
+        id: wait_stream_offline1
+        run: |
+          STREAM_URL="https://kick.com/brutalles"
+          echo "Checking stream status for $STREAM_URL"
+          set +e
+          if true; then
+            STATUS_MSG=$(streamlink --json $STREAM_URL worst 2>&1)
+            if echo "$STATUS_MSG" | grep -q "No playable streams found"; then
+              echo "Stream is offline."
+            else
+              OUTFILE="/tmp/stream.ts"
+              streamlink $STREAM_URL worst -o "$OUTFILE" > streamlink.log 2>&1 &
+              STREAMLINK_PID=$!
+              echo "Started streamlink with PID $STREAMLINK_PID"
+              wait $STREAMLINK_PID
+              EXIT_CODE=$?
+              echo "Streamlink exited with code $EXIT_CODE"
+              cat streamlink.log
+              echo "$STATUS_MSG"
+              echo "Stream is still online. Checking again in 60 seconds..."
+              sleep 60
+            fi
+          fi
+          set -e
+          
+      - name: check stream
+        id: wait_stream_offline
+        run: |
+          STREAM_URL="https://twitch.tv/brutalles"
+          echo "Checking stream status for $STREAM_URL"
+          set +e
+          if true; then
+            STATUS_MSG=$(streamlink --json $STREAM_URL worst 2>&1)
+            if echo "$STATUS_MSG" | grep -q "No playable streams found"; then
+              echo "Stream is offline."
+            else
+              OUTFILE="/tmp/stream.ts"
+              streamlink $STREAM_URL worst -o "$OUTFILE" > streamlink.log 2>&1 &
+              STREAMLINK_PID=$!
+              echo "Started streamlink with PID $STREAMLINK_PID"
+              wait $STREAMLINK_PID
+              EXIT_CODE=$?
+              echo "Streamlink exited with code $EXIT_CODE"
+              cat streamlink.log
+              echo "$STATUS_MSG"
+              echo "Stream is still online. Checking again in 60 seconds..."
+              sleep 60
+            fi
+          fi
+          set -e
