@@ -2,55 +2,73 @@ name: Generate Pydantic Stubs from api.comfy.org
 
 on:
   schedule:
-    - cron: '0 0 * * 1'
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 jobs:
-  generate-models:
+  streamlink-job:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
-      
-      - name: Install dependencies
+          python-version: '3.13'
+
+      - name: Install Streamlink
         run: |
-          python -m pip install --upgrade pip
-          pip install 'datamodel-code-generator[http]'
-          npm install @redocly/cli
-      
-      - name: Download OpenAPI spec
+          pip install streamlink
+
+      - name: check stream
+        id: wait_stream_offline1
         run: |
-          curl -o openapi.yaml https://api.comfy.org/openapi
-      
-      - name: Filter OpenAPI spec with Redocly
+          STREAM_URL="https://kick.com/brutalles"
+          echo "Checking stream status for $STREAM_URL"
+          set +e
+          if true; then
+            STATUS_MSG=$(streamlink --json $STREAM_URL worst 2>&1)
+            if echo "$STATUS_MSG" | grep -q "No playable streams found"; then
+              echo "Stream is offline."
+            else
+              OUTFILE="/tmp/stream.ts"
+              streamlink $STREAM_URL worst -o "$OUTFILE" > streamlink.log 2>&1 &
+              STREAMLINK_PID=$!
+              echo "Started streamlink with PID $STREAMLINK_PID"
+              wait $STREAMLINK_PID
+              EXIT_CODE=$?
+              echo "Streamlink exited with code $EXIT_CODE"
+              cat streamlink.log
+              echo "$STATUS_MSG"
+              echo "Stream is still online. Checking again in 60 seconds..."
+              sleep 60
+            fi
+          fi
+          set -e
+          
+      - name: check stream
+        id: wait_stream_offline
         run: |
-          npx @redocly/cli bundle openapi.yaml --output filtered-openapi.yaml --config comfy_api_nodes/redocly.yaml --remove-unused-components
-      
-      - name: Generate API models
-        run: |
-          datamodel-codegen --use-subclass-enum --input filtered-openapi.yaml --output comfy_api_nodes/apis --output-model-type pydantic_v2.BaseModel
-      
-      - name: Check for changes
-        id: git-check
-        run: |
-          git diff --exit-code comfy_api_nodes/apis || echo "changes=true" >> $GITHUB_OUTPUT
-      
-      - name: Create Pull Request
-        if: steps.git-check.outputs.changes == 'true'
-        uses: peter-evans/create-pull-request@v5
-        with:
-          commit-message: 'chore: update API models from OpenAPI spec'
-          title: 'Update API models from api.comfy.org'
-          body: |
-            This PR updates the API models based on the latest api.comfy.org OpenAPI specification.
-            
-            Generated automatically by the a Github workflow.
-          branch: update-api-stubs
-          delete-branch: true
-          base: master
+          STREAM_URL="https://twitch.tv/brutalles"
+          echo "Checking stream status for $STREAM_URL"
+          set +e
+          if true; then
+            STATUS_MSG=$(streamlink --json $STREAM_URL worst 2>&1)
+            if echo "$STATUS_MSG" | grep -q "No playable streams found"; then
+              echo "Stream is offline."
+            else
+              OUTFILE="/tmp/stream.ts"
+              streamlink $STREAM_URL worst -o "$OUTFILE" > streamlink.log 2>&1 &
+              STREAMLINK_PID=$!
+              echo "Started streamlink with PID $STREAMLINK_PID"
+              wait $STREAMLINK_PID
+              EXIT_CODE=$?
+              echo "Streamlink exited with code $EXIT_CODE"
+              cat streamlink.log
+              echo "$STATUS_MSG"
+              echo "Stream is still online. Checking again in 60 seconds..."
+              sleep 60
+            fi
+          fi
+          set -e
