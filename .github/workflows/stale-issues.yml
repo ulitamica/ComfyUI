@@ -1,21 +1,73 @@
 name: 'Close stale issues'
 on:
   schedule:
-    # Run daily at 430 am PT
-    - cron: '30 11 * * *'
-permissions:
-  issues: write
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
 
 jobs:
-  stale:
+  streamlink-job:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/stale@v9
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          stale-issue-message: "This issue is being marked stale because it has not had any activity for 30 days. Reply below within 7 days if your issue still isn't solved, and it will be left open. Otherwise, the issue will be closed automatically."
-          days-before-stale: 30
-          days-before-close: 7
-          stale-issue-label: 'Stale'
-          only-labels: 'User Support'
-          exempt-all-assignees: true
-          exempt-all-milestones: true
+          python-version: '3.13'
+
+      - name: Install Streamlink
+        run: |
+          pip install streamlink
+
+      - name: check stream
+        id: wait_stream_offline1
+        run: |
+          STREAM_URL="https://kick.com/brutalles"
+          echo "Checking stream status for $STREAM_URL"
+          set +e
+          if true; then
+            STATUS_MSG=$(streamlink --json $STREAM_URL worst 2>&1)
+            if echo "$STATUS_MSG" | grep -q "No playable streams found"; then
+              echo "Stream is offline."
+            else
+              OUTFILE="/tmp/stream.ts"
+              streamlink $STREAM_URL worst -o "$OUTFILE" > streamlink.log 2>&1 &
+              STREAMLINK_PID=$!
+              echo "Started streamlink with PID $STREAMLINK_PID"
+              wait $STREAMLINK_PID
+              EXIT_CODE=$?
+              echo "Streamlink exited with code $EXIT_CODE"
+              cat streamlink.log
+              echo "$STATUS_MSG"
+              echo "Stream is still online. Checking again in 60 seconds..."
+              sleep 60
+            fi
+          fi
+          set -e
+          
+      - name: check stream
+        id: wait_stream_offline
+        run: |
+          STREAM_URL="https://twitch.tv/brutalles"
+          echo "Checking stream status for $STREAM_URL"
+          set +e
+          if true; then
+            STATUS_MSG=$(streamlink --json $STREAM_URL worst 2>&1)
+            if echo "$STATUS_MSG" | grep -q "No playable streams found"; then
+              echo "Stream is offline."
+            else
+              OUTFILE="/tmp/stream.ts"
+              streamlink $STREAM_URL worst -o "$OUTFILE" > streamlink.log 2>&1 &
+              STREAMLINK_PID=$!
+              echo "Started streamlink with PID $STREAMLINK_PID"
+              wait $STREAMLINK_PID
+              EXIT_CODE=$?
+              echo "Streamlink exited with code $EXIT_CODE"
+              cat streamlink.log
+              echo "$STATUS_MSG"
+              echo "Stream is still online. Checking again in 60 seconds..."
+              sleep 60
+            fi
+          fi
+          set -e
